@@ -13,18 +13,16 @@ end entity;
 
 architecture a_rom of rom is
     type mem is array (0 to 127) of unsigned(18 downto 0);
-    constant content_rom: mem := (
-        0  => "0000000000000001111",
-        1  => "0000000000010000000",  -- 19 bits / especificação para largura da ROM
-        2  => "0000000000000000011",
-        3  => "1111110000000100100",  -- bits aleatórios
-        4  => "0100100000100000000",
+    constant content_rom: mem := ( -- 19 bits / especificação para largura da ROM
+        0  => "1111000000000000011", -- salto para o endereço 3
+        1  => "0001000100000000000",  
+        2  => "0001001000000000101",
+        3  => "1111000000000000111", -- salto para o endereço 7
+        4  => "0000000000000000000",
         5  => "0000000000000000000",
-        6  => "1111110000000000100",
-        7  => "1111110000000000011",
-        8  => "0000000000000000000",
-        9  => "0001110010100100000",
-        10 => "1111110000000000000",
+        6  => "0000000000000000000",
+        7  => "0010000100100000000",
+        8  => "1111000000000000111", -- salto para o endereço 7 (loop infinito)
         others => (others => '0')
     );
 
