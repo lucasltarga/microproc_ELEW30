@@ -32,7 +32,7 @@ architecture a_banco_reg of banco_reg is
     signal r0_out, r1_out, r2_out, r3_out, r4_out, r5_out, r6_out, r7_out: unsigned(15 downto 0);
 
 begin
-    wr_en_regs(0) <= '1' when reg_wr = "000" and wr_en = '1' else '0';
+    wr_en_regs(0) <= '0'; -- sempre desabilita escrita em R0 (convenção RISC V)
     wr_en_regs(1) <= '1' when reg_wr = "001" and wr_en = '1' else '0';
     wr_en_regs(2) <= '1' when reg_wr = "010" and wr_en = '1' else '0';
     wr_en_regs(3) <= '1' when reg_wr = "011" and wr_en = '1' else '0';
@@ -105,7 +105,7 @@ begin
         data_out => r7_out
     );  
 
-    data_out1 <= r0_out when reg_read1 = "000" else
+    data_out1 <= x"0000" when reg_read1 = "000" else
     r1_out when reg_read1 = "001" else
     r2_out when reg_read1 = "010" else
     r3_out when reg_read1 = "011" else
@@ -114,7 +114,7 @@ begin
     r6_out when reg_read1 = "110" else
     r7_out when reg_read1 = "111" else x"0000";
     
-    data_out2 <= r0_out when reg_read2 = "000" else
+    data_out2 <= x"0000" when reg_read2 = "000" else
     r1_out when reg_read2 = "001" else
     r2_out when reg_read2 = "010" else
     r3_out when reg_read2 = "011" else
