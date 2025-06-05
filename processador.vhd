@@ -16,7 +16,16 @@ architecture a_processador of processador is
             pc_wr_en    : out std_logic;
             rom_rd_en   : out std_logic;
             jump_en     : out std_logic;
-            jump_address : out unsigned(6 downto 0)
+            jump_address : out unsigned(6 downto 0);
+            reg_wr_en   : out std_logic;
+            reg_instr_wr_en : out std_logic;
+            ula_op_sel  : out unsigned(1 downto 0);
+            operando_sel : out std_logic;
+            reg_wr    : out unsigned(2 downto 0);
+            reg_src1    : out unsigned(2 downto 0);
+            reg_src2    : out unsigned(2 downto 0);
+            imm_value   : out unsigned(15 downto 0);
+            flag_zero, flag_neg : in std_logic
         );
     end component;
     
@@ -38,29 +47,76 @@ architecture a_processador of processador is
             data_out : out unsigned(6 downto 0)
         );
     end component;
+
+    component reg_instr is port(
+        clk, rst, wr_en : in std_logic;
+        data_in    : in unsigned(18 downto 0);
+        data_out   : out unsigned(18 downto 0)
+    ); end component;
+
+    component banco_reg is port(
+        clk, rst, wr_en : in std_logic;
+        data_wr         : in unsigned(15 downto 0);
+        reg_wr          : in unsigned(2 downto 0);
+        reg_read1       : in unsigned(2 downto 0);
+        data_out1       : out unsigned(15 downto 0);
+        reg_read2       : in unsigned(2 downto 0);
+        data_out2       : out unsigned(15 downto 0)
+    ); end component;
     
-    signal pc_to_rom : unsigned(6 downto 0);
-    signal rom_to_uc : unsigned(18 downto 0);
-    signal uc_pc_wr_en, uc_rom_rd_en, uc_jump_en : std_logic;
+    component ula is port(
+        entr0, entr1 : in unsigned(15 downto 0);
+        sel          : in unsigned(1 downto 0);
+        saida        : out unsigned(15 downto 0);
+        flag_zero    : out std_logic;
+        flag_neg     : out std_logic
+    ); end component;
+    
+    -- sinais de conexão
+    signal pc_to_rom : unsigned(6 downto 0) := "0000000";
+    signal rom_to_reg_instr : unsigned(18 downto 0) := "0000000000000000000";
+    signal reg_instr_to_uc : unsigned(18 downto 0) := "0000000000000000000";
+
+    -- sinais de controle da UC
+    signal uc_pc_wr_en, uc_rom_rd_en, uc_jump_en, uc_reg_instr_wr_en : std_logic;
+    signal uc_jump_address : unsigned(6 downto 0) := "0000000";
+    signal uc_reg_wr_en, uc_operando_sel : std_logic;
+    signal uc_ula_op_sel : unsigned(1 downto 0) := "00";
+    signal uc_reg_dest, uc_reg_src1, uc_reg_src2 : unsigned(2 downto 0) := "000";
+    signal uc_imm_value : unsigned(15 downto 0) := x"0000";
+
+    -- sinais do caminho de dados
     signal pc_next : unsigned(6 downto 0);
-    signal uc_jump_address : unsigned(6 downto 0);
+    signal reg_data1, reg_data2, ula_out : unsigned(15 downto 0);
+    signal ula_operando2 : unsigned(15 downto 0);
+    signal ula_flag_zero, ula_flag_neg : std_logic;
     
 begin
     uc_inst: uc port map(
         clk          => clk,
         rst          => rst,
-        instruction  => rom_to_uc,
+        instruction  => reg_instr_to_uc,
         pc_wr_en     => uc_pc_wr_en,
         rom_rd_en    => uc_rom_rd_en,
-        jump_en      => uc_jump_en,
-        jump_address => uc_jump_address
+        reg_instr_wr_en => uc_reg_instr_wr_en,
+        jump_en => uc_jump_en,
+        jump_address => uc_jump_address,
+        reg_wr => uc_reg_dest,
+        reg_wr_en => uc_reg_wr_en,
+        ula_op_sel => uc_ula_op_sel,
+        operando_sel => uc_operando_sel,
+        reg_src1 => uc_reg_src1,
+        reg_src2 => uc_reg_src2,
+        imm_value => uc_imm_value,
+        flag_zero => ula_flag_zero,
+        flag_neg => ula_flag_neg
     );
     
     rom_inst: rom port map(
         clk     => clk,
         address => pc_to_rom,
         rd_en   => uc_rom_rd_en,
-        data    => rom_to_uc
+        data    => rom_to_reg_instr
     );
     
     pc_inst: pc port map(
@@ -70,7 +126,39 @@ begin
         data_in  => pc_next,
         data_out => pc_to_rom
     );
+
+    banco_reg_inst: banco_reg port map(
+        clk => clk,
+        rst => rst,
+        wr_en => uc_reg_wr_en,
+        data_wr => ula_out,
+        reg_wr => uc_reg_dest,
+        reg_read1 => uc_reg_src1,
+        data_out1 => reg_data1,
+        reg_read2 => uc_reg_src2,
+        data_out2 => reg_data2
+    );
+
+    ula_inst: ula port map(
+        entr0 => reg_data1,
+        entr1 => ula_operando2,
+        sel => uc_ula_op_sel,
+        saida => ula_out,
+        flag_zero => ula_flag_zero,
+        flag_neg => ula_flag_neg
+    );
+
+    reg_instr_inst: reg_instr port map(
+        clk => clk,
+        rst => rst,
+        wr_en => uc_reg_instr_wr_en,
+        data_in => rom_to_reg_instr,
+        data_out => reg_instr_to_uc
+    );      
     
+    -- MUX para seleção do segundo operando
+    ula_operando2 <= reg_data2 when uc_operando_sel = '1' else uc_imm_value;
+
     -- se uc_jump_en = 1, PC recebe o endereço de jump. Se não, incrementa 1 a cada clock
     pc_next <= uc_jump_address when uc_jump_en = '1' else pc_to_rom + 1;
 end architecture;
