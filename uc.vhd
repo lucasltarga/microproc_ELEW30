@@ -2,6 +2,9 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
+-- wr_en dos flipflops só quando for instrução de ULA (nas flags)
+-- para o lab 6 as flags devem ser implementadas em flipflops
+
 entity uc is
     port (
         clk, rst     : in std_logic;
@@ -46,32 +49,21 @@ begin
     -- opcode          endereço    
 
     opcode <= instruction(18 downto 15);
-    process(opcode, instruction)
-    begin
-        case opcode is
-            when "0001"|"0010"|"0011"|"0100" => -- Tipo R
-                reg_dest_s  <= instruction(14 downto 12);
-                reg_src1_s  <= instruction(11 downto 9);
-                reg_src2_s  <= instruction(8 downto 6);
-                immediate_s <= (others => '0');
-                
-            when "0101"|"0110"|"0111" => -- Tipo I (ADDI/SUBI/CMPI)
-                reg_dest_s  <= instruction(14 downto 12);
-                reg_src1_s  <= instruction(11 downto 9);
-                reg_src2_s  <= (others => '0');
-                immediate_s <= "0000000" & instruction(8 downto 0); -- Estende para 16 bits
-                --immediate_s <= unsigned(resize(signed(instruction(8 downto 0), 16));
-            
-            when "1111" => -- Instrução JMP
-                jump_addr <= instruction(6 downto 0);
-                reg_dest_s <= (others => '0');
-                reg_src1_s <= (others => '0');
-                reg_src2_s <= (others => '0');
-                immediate_s <= (others => '0');
 
-            when others => null;
-        end case;
-    end process;
+    -- Ativo para instruções tipo R e tipo I
+    reg_dest_s <= instruction(14 downto 12) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100" or 
+                                                  opcode = "0101" or opcode = "0110" or opcode = "0111") else "000";
+    -- Mesmo de reg_dest_s
+    reg_src1_s  <= instruction(11 downto 9) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100" or 
+                                                  opcode = "0101" or opcode = "0110" or opcode = "0111") else "000";
+    -- Ativo para instruções tipo R
+    reg_src2_s  <= instruction(8 downto 6) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100") else "000";
+
+    -- Ativo para instruções tipo I
+    immediate_s <= "0000000" & instruction(8 downto 0) when (opcode = "0101" or opcode = "0110" or opcode = "0111") else x"0000";
+
+    -- Ativo apenas para saltos
+    jump_addr   <= instruction(6 downto 0) when opcode = "1111" else "0000000";
 
     -- Máquina de dois estados
     process(clk,rst) -- acionado se houver mudança em clk ou rst
@@ -85,6 +77,8 @@ begin
     
     -- FETCH
     -- Leitura da ROM
+
+    -- REFAZER: deixar sempre em 1
     rom_rd_en_s <= '1' when estado = '0' else '0';
     -- Escrita no registrador de instrução (somente em fetch)
     reg_instr_wr_en_s <= '1' when (estado = '0') else '0'; 
