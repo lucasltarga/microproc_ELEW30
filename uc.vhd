@@ -23,8 +23,7 @@ entity uc is
 end entity;
 
 architecture a_uc of uc is
-    -- 0 = fetch, 1 = decode/execute
-    signal estado     : std_logic := '0'; -- por enquanto std_logic é suficiente por usarmos apenas 2 estados. se não, usar unsigned.
+    signal estado     : unsigned(1 downto 0) := "00"; -- 00=fetch, 01=decode, 10=execute
     signal rom_rd_en_s, pc_wr_en_s, reg_instr_wr_en_s : std_logic;
     signal opcode     : unsigned(3 downto 0);
     signal reg_dest_s : unsigned(2 downto 0) := "000";
@@ -65,29 +64,37 @@ begin
     -- Ativo apenas para saltos
     jump_addr   <= instruction(6 downto 0) when opcode = "1111" else "0000000";
 
-    -- Máquina de dois estados
+    -- Máquina de três estados
+    -- 00 FETCH
+    -- 01 DECODE
+    -- 10 EXECUTE
     process(clk,rst) -- acionado se houver mudança em clk ou rst
         begin
             if rst='1' then
-                estado <= '0';
+                estado <= "00";
             elsif rising_edge(clk) then
-                estado <= not estado; -- alterna entre fetch e decode/execute
+                case estado is
+                    when "00" => estado <= "01";  -- fetch -> decode
+                    when "01" => estado <= "10";  -- decode -> execute
+                    when "10" => estado <= "00";  -- execute -> fetch
+                    when others => estado <= "00";
+                end case;
             end if;
     end process;
     
     -- FETCH
-    -- Leitura da ROM
+    -- REFAZER?: deixar sempre em 1
+    rom_rd_en_s <= '1' when estado = "00" else '0'; -- Leitura da ROM
 
-    -- REFAZER: deixar sempre em 1
-    rom_rd_en_s <= '1' when estado = '0' else '0';
-    -- Escrita no registrador de instrução (somente em fetch)
-    reg_instr_wr_en_s <= '1' when (estado = '0') else '0'; 
+    -- DECODE
+    -- Escrita no registrador de instrução (somente em decode)
+    reg_instr_wr_en_s <= '1' when (estado = "01") else '0'; -- Registra instrução
 
-    -- DECODE/EXECUTE
-    -- Escrita do PC
-    pc_wr_en_s <= '1' when estado = '1' else '0';
-    -- Habilita escrita para ops ULA (exceto para CMPI)
-    reg_wr_en <= '1' when (estado = '1' and (
+    -- EXECUTE
+    -- Escrita do PC (somente em execute)
+    pc_wr_en_s <= '1' when estado = "10" else '0'; -- atualiza PC
+    -- Habilita escrita para operações ULA (exceto para CMPI)
+    reg_wr_en <= '1' when (estado = "10" and (
         opcode = "0001" or -- ADD
         opcode = "0010" or -- SUB
         opcode = "0011" or -- OR
@@ -96,10 +103,10 @@ begin
         opcode = "0110"    -- SUBI
     )) else '0';
 
-    -- Controle de saltos 
-    jump_en <=  '1' when (estado = '1' and opcode = "1111") else   -- Salto incondicional (opcode 1111)
-                '1' when (estado = '1' and opcode="1000" and flag_zero='0') else   -- Salto condicional BNE (opcode 1000)
-                '1' when (estado = '1' and opcode="1001" and flag_neg='0') else '0'; -- Salto condicional BPL (1001)
+    -- Controle de saltos (EXECUTE)
+    jump_en <=  '1' when (estado = "10" and opcode = "1111") else   -- Salto incondicional (opcode 1111)
+                '1' when (estado = "10" and opcode="1000" and flag_zero='0') else   -- Salto condicional BNE (opcode 1000)
+                '1' when (estado = "10" and opcode="1001" and flag_neg='0') else '0'; -- Salto condicional BPL (1001)
     
     -- Controle do caminho de dados
     ula_op_sel <= "00" when opcode = "0001" else -- ADD
