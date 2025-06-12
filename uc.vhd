@@ -2,9 +2,6 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
--- wr_en dos flipflops só quando for instrução de ULA (nas flags)
--- para o lab 6 as flags devem ser implementadas em flipflops
-
 entity uc is
     port (
         clk, rst     : in std_logic;
@@ -18,7 +15,8 @@ entity uc is
         reg_src1     : out unsigned(2 downto 0);
         reg_src2     : out unsigned(2 downto 0);
         imm_value    : out unsigned(15 downto 0);
-        flag_zero, flag_neg : in std_logic
+        flag_zero, flag_neg : in std_logic;
+        ula_wr_en : out std_logic
     );
 end entity;
 
@@ -32,7 +30,7 @@ architecture a_uc of uc is
     signal immediate_s  : unsigned(15 downto 0) := x"0000";
     signal jump_addr  : unsigned(6 downto 0) := "0000000";
     signal flag_zero_ula, flag_neg_ula : std_logic;
-
+    signal offset_salto : unsigned(6 downto 0) := "0000000"; -- offset para saltos relativos (BNE e BPL)
 begin
     -- Extração de campos da instrução
     --- Tipo R
@@ -61,8 +59,11 @@ begin
     -- Ativo para instruções tipo I
     immediate_s <= "0000000" & instruction(8 downto 0) when (opcode = "0101" or opcode = "0110" or opcode = "0111") else x"0000";
 
-    -- Ativo apenas para saltos
+    -- Ativo para saltos absolutos (JMP)
     jump_addr   <= instruction(6 downto 0) when opcode = "1111" else "0000000";
+
+    -- Ativo para saltos condicionais (BNE e BPL)
+    offset_salto <= instruction(6 downto 0) when opcode = "1000" or opcode = "1001" else "0000000";
 
     -- Máquina de três estados
     -- 00 FETCH
@@ -103,11 +104,22 @@ begin
         opcode = "0110"    -- SUBI
     )) else '0';
 
+    -- Habilita escrita das flags para operações ULA
+    ula_wr_en <= '1' when (estado = "10" and (
+        opcode = "0001" or opcode = "0010" or  -- ADD, SUB
+        opcode = "0011" or opcode = "0100" or  -- OR, AND
+        opcode = "0101" or opcode = "0110" or  -- ADDI, SUBI
+        opcode = "0111"                        -- CMPI
+    )) else '0';
+
     -- Controle de saltos (EXECUTE)
     jump_en <=  '1' when (estado = "10" and opcode = "1111") else   -- Salto incondicional (opcode 1111)
                 '1' when (estado = "10" and opcode="1000" and flag_zero='0') else   -- Salto condicional BNE (opcode 1000)
                 '1' when (estado = "10" and opcode="1001" and flag_neg='0') else '0'; -- Salto condicional BPL (1001)
     
+    -- Seleção de endereço de salto
+    jump_address <= jump_addr when opcode = "1111" else offset_salto;
+
     -- Controle do caminho de dados
     ula_op_sel <= "00" when opcode = "0001" else -- ADD
                   "01" when opcode = "0010" else -- SUB
@@ -123,6 +135,7 @@ begin
                     '0' when opcode = "0110" else  -- SUBI
                     '0' when opcode = "0111" else  -- CMPI
                     '1';
+
     rom_rd_en <= rom_rd_en_s;
     pc_wr_en <= pc_wr_en_s;
     reg_instr_wr_en <= reg_instr_wr_en_s;
@@ -130,5 +143,4 @@ begin
     reg_src1 <= reg_src1_s;
     reg_src2 <= reg_src2_s;
     imm_value <= immediate_s;
-    jump_address <= jump_addr;
 end architecture;

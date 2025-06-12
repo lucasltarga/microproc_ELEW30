@@ -5,7 +5,7 @@ use ieee.numeric_std.all;
 entity processador_tb is
 end entity;
 
-architecture a_processador_Tb of processador_tb is
+architecture a_processador_tb of processador_tb is
     component processador is
         port(
             clk, rst : in std_logic
@@ -32,7 +32,7 @@ begin
     
     sim_time_proc: process
     begin
-        wait for 10 us;
+        wait for 100 us;
         finished <= '1';
         wait;
     end process sim_time_proc;

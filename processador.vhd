@@ -25,7 +25,8 @@ architecture a_processador of processador is
             reg_src1    : out unsigned(2 downto 0);
             reg_src2    : out unsigned(2 downto 0);
             imm_value   : out unsigned(15 downto 0);
-            flag_zero, flag_neg : in std_logic
+            flag_zero, flag_neg : in std_logic;
+            ula_wr_en : out std_logic
         );
     end component;
     
@@ -65,8 +66,10 @@ architecture a_processador of processador is
     ); end component;
     
     component ula is port(
+        clk, rst     : in std_logic;
         entr0, entr1 : in unsigned(15 downto 0);
         sel          : in unsigned(1 downto 0);
+        wr_en        : in std_logic;
         saida        : out unsigned(15 downto 0);
         flag_zero    : out std_logic;
         flag_neg     : out std_logic
@@ -90,6 +93,12 @@ architecture a_processador of processador is
     signal reg_data1, reg_data2, ula_out : unsigned(15 downto 0);
     signal ula_operando2 : unsigned(15 downto 0);
     signal ula_flag_zero, ula_flag_neg : std_logic;
+    signal uc_ula_wr_en : std_logic;
+
+    -- sinais para cálculo de salto relativo
+    signal offset_relativo : signed(7 downto 0);
+    signal pc_mais_offset  : unsigned(7 downto 0);
+    signal is_branch       : std_logic := '0';
     
 begin
     uc_inst: uc port map(
@@ -109,7 +118,8 @@ begin
         reg_src2 => uc_reg_src2,
         imm_value => uc_imm_value,
         flag_zero => ula_flag_zero,
-        flag_neg => ula_flag_neg
+        flag_neg => ula_flag_neg,
+        ula_wr_en => uc_ula_wr_en
     );
     
     rom_inst: rom port map(
@@ -140,9 +150,12 @@ begin
     );
 
     ula_inst: ula port map(
+        clk => clk,
+        rst => rst,
         entr0 => reg_data1,
         entr1 => ula_operando2,
         sel => uc_ula_op_sel,
+        wr_en => uc_ula_wr_en,
         saida => ula_out,
         flag_zero => ula_flag_zero,
         flag_neg => ula_flag_neg
@@ -154,11 +167,25 @@ begin
         wr_en => uc_reg_instr_wr_en,
         data_in => rom_to_reg_instr,
         data_out => reg_instr_to_uc
-    );      
+    );
+    
+    -- Identifica se é salto condicional
+    is_branch <= '1' when uc_jump_en = '1' and -- é salto
+        (reg_instr_to_uc(18 downto 15) = "1000" or -- BNE
+        reg_instr_to_uc(18 downto 15) = "1001")    -- BPL
+        else '0';
+
+    -- Converte offset para signed (complemento de 2)
+    offset_relativo <= resize(signed(uc_jump_address), 8); -- 8 bits: -128 a +127
+
+    -- Calcula PC + offset (relativo ao próximo PC)
+    pc_mais_offset <= unsigned(signed('0' & pc_to_rom) + 1 + offset_relativo);
     
     -- MUX para seleção do segundo operando
     ula_operando2 <= reg_data2 when uc_operando_sel = '1' else uc_imm_value;
 
-    -- se uc_jump_en = 1, PC recebe o endereço de jump. Se não, incrementa 1 a cada clock
-    pc_next <= uc_jump_address when uc_jump_en = '1' else pc_to_rom + 1;
+    -- Seleção do próximo PC
+    pc_next <= pc_mais_offset(6 downto 0) when is_branch = '1' else -- Salto relativo
+    uc_jump_address when uc_jump_en = '1'  -- Salto absoluto
+    else pc_to_rom + 1; -- Próxima instrução
 end architecture;
