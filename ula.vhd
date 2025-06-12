@@ -14,9 +14,11 @@ use ieee.numeric_std.all;
 
 entity ula is
     port(
+        clk, rst : in std_logic;
         entr0: in unsigned(15 downto 0);
         entr1: in unsigned(15 downto 0);
         sel: in unsigned(1 downto 0);
+        wr_en: in std_logic; -- habilita atualização das flags
         flag_zero: out std_logic; -- Resultado = 0
         flag_neg: out std_logic; -- Negativo (MSB = 1)
         saida: out unsigned(15 downto 0)
@@ -26,6 +28,8 @@ end entity;
 
 architecture a_ula of ula is
     signal resultado: unsigned(15 downto 0);
+    signal reg_zero, reg_neg: std_logic := '0';
+
 begin
     -- Operações:
     -- 00 -> Soma
@@ -41,6 +45,24 @@ begin
 
     saida <= resultado;
 
-    flag_zero <= '1' when resultado = x"0000" else '0';
-    flag_neg <= resultado(15);
+    process(clk, rst)
+    begin
+        if rst = '1' then
+            reg_zero <= '0';
+            reg_neg <= '0';
+        elsif rising_edge(clk) then
+            if wr_en = '1' then
+                if resultado = x"0000" then
+                    reg_zero <= '1';
+                else
+                    reg_zero <= '0';
+                end if;
+                
+                reg_neg <= resultado(15);
+            end if;
+        end if;
+    end process;
+
+    flag_zero <= reg_zero;
+    flag_neg <= reg_neg;
 end architecture;
