@@ -16,12 +16,14 @@ entity uc is
         reg_src2     : out unsigned(2 downto 0);
         imm_value    : out unsigned(15 downto 0);
         flag_zero, flag_neg : in std_logic;
-        ula_wr_en : out std_logic
+        ula_wr_en    : out std_logic;
+        ram_wr_en    : out std_logic;
+        mem_to_reg   : out std_logic -- seletor para dado do banco de registradores
     );
 end entity;
 
 architecture a_uc of uc is
-    signal estado     : unsigned(1 downto 0) := "00"; -- 00=fetch, 01=decode, 10=execute
+    signal estado     : unsigned(1 downto 0) := "00"; -- 00=fetch, 01=decode, 10=execute, 11=memory
     signal rom_rd_en_s, pc_wr_en_s, reg_instr_wr_en_s : std_logic;
     signal opcode     : unsigned(3 downto 0);
     signal reg_dest_s : unsigned(2 downto 0) := "000";
@@ -31,7 +33,9 @@ architecture a_uc of uc is
     signal jump_addr  : unsigned(6 downto 0) := "0000000";
     signal flag_zero_ula, flag_neg_ula : std_logic;
     signal offset_salto : unsigned(6 downto 0) := "0000000"; -- offset para saltos relativos (BNE e BPL)
-begin
+    signal ram_wr_en_s, mem_to_reg_s : std_logic;
+
+    begin
     -- Extração de campos da instrução
     --- Tipo R
     ---  0000   000   000   000   0000000
@@ -49,15 +53,19 @@ begin
 
     -- Ativo para instruções tipo R e tipo I
     reg_dest_s <= instruction(14 downto 12) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100" or 
-                                                  opcode = "0101" or opcode = "0110" or opcode = "0111") else "000";
+                                                  opcode = "0101" or opcode = "0110" or opcode = "0111" or opcode = "1010") else "000";
     -- Mesmo de reg_dest_s
     reg_src1_s  <= instruction(11 downto 9) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100" or 
-                                                  opcode = "0101" or opcode = "0110" or opcode = "0111") else "000";
+                                                  opcode = "0101" or opcode = "0110" or opcode = "0111" or opcode="1010" or opcode = "1011") else "000";
     -- Ativo para instruções tipo R
-    reg_src2_s  <= instruction(8 downto 6) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100") else "000";
+    reg_src2_s  <= instruction(14 downto 12) when (opcode = "1011") else 
+                   instruction(8 downto 6) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100")
+                     else "000";
 
     -- Ativo para instruções tipo I
-    immediate_s <= "0000000" & instruction(8 downto 0) when (opcode = "0101" or opcode = "0110" or opcode = "0111") else x"0000";
+    immediate_s <= unsigned(resize(signed(instruction(8 downto 0)), 16)) -- extensão de sinal
+                    when (opcode = "0101" or opcode = "0110" or opcode = "0111" or opcode = "1010" or opcode = "1011") 
+                    else x"0000";
 
     -- Ativo para saltos absolutos (JMP)
     jump_addr   <= instruction(6 downto 0) when opcode = "1111" else "0000000";
@@ -65,10 +73,11 @@ begin
     -- Ativo para saltos condicionais (BNE e BPL)
     offset_salto <= instruction(6 downto 0) when opcode = "1000" or opcode = "1001" else "0000000";
 
-    -- Máquina de três estados
+    -- Máquina de quatro estados
     -- 00 FETCH
     -- 01 DECODE
     -- 10 EXECUTE
+    -- 11 MEMORY
     process(clk,rst) -- acionado se houver mudança em clk ou rst
         begin
             if rst='1' then
@@ -77,14 +86,14 @@ begin
                 case estado is
                     when "00" => estado <= "01";  -- fetch -> decode
                     when "01" => estado <= "10";  -- decode -> execute
-                    when "10" => estado <= "00";  -- execute -> fetch
+                    when "10" => estado <= "11";  -- execute -> memory
+                    when "11" => estado <= "00";  -- memory -> fetch
                     when others => estado <= "00";
                 end case;
             end if;
     end process;
     
     -- FETCH
-    -- REFAZER?: deixar sempre em 1
     rom_rd_en_s <= '1' when estado = "00" else '0'; -- Leitura da ROM
 
     -- DECODE
@@ -92,8 +101,6 @@ begin
     reg_instr_wr_en_s <= '1' when (estado = "01") else '0'; -- Registra instrução
 
     -- EXECUTE
-    -- Escrita do PC (somente em execute)
-    pc_wr_en_s <= '1' when estado = "10" else '0'; -- atualiza PC
     -- Habilita escrita para operações ULA (exceto para CMPI)
     reg_wr_en <= '1' when (estado = "10" and (
         opcode = "0001" or -- ADD
@@ -102,7 +109,8 @@ begin
         opcode = "0100" or -- AND
         opcode = "0101" or -- ADDI
         opcode = "0110"    -- SUBI
-    )) else '0';
+        )) or (estado = "11" and opcode = "1010") -- LW
+        else '0';
 
     -- Habilita escrita das flags para operações ULA
     ula_wr_en <= '1' when (estado = "10" and (
@@ -128,13 +136,25 @@ begin
                   "00" when opcode = "0101" else -- ADDI
                   "01" when opcode = "0110" else -- SUBI
                   "01" when opcode = "0111" else -- CMPI
+                  "00" when opcode = "1010" else -- LW
+                  "00" when opcode = "1011" else -- SW
                   "00";                          -- Padrão
     
     -- Seleção do segundo operando (0 para imediato e 1 para registrador)
-    operando_sel <= '0' when opcode = "0101" else  -- ADDI
-                    '0' when opcode = "0110" else  -- SUBI
-                    '0' when opcode = "0111" else  -- CMPI
+    operando_sel <= '0' when opcode = "0101" else -- ADDI
+                    '0' when opcode = "0110" else -- SUBI
+                    '0' when opcode = "0111" else -- CMPI
+                    '0' when opcode = "1010" else -- LW
+                    '0' when opcode = "1011" else -- SW
                     '1';
+    
+    -- MEMORY
+    -- Controle para ram_wr_en_s
+    ram_wr_en_s <= '1' when (estado = "11" and opcode = "1011") else '0'; -- escrita em SW
+    mem_to_reg_s <= '1' when (opcode = "1010") else '0'; -- LW
+
+    -- Escrita do PC (somente no final do ciclo)
+    pc_wr_en_s <= '1' when estado = "11" else '0'; -- atualiza PC
 
     rom_rd_en <= rom_rd_en_s;
     pc_wr_en <= pc_wr_en_s;
@@ -143,4 +163,6 @@ begin
     reg_src1 <= reg_src1_s;
     reg_src2 <= reg_src2_s;
     imm_value <= immediate_s;
+    ram_wr_en <= ram_wr_en_s;
+    mem_to_reg <= mem_to_reg_s;
 end architecture;

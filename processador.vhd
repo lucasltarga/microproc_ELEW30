@@ -26,7 +26,9 @@ architecture a_processador of processador is
             reg_src2    : out unsigned(2 downto 0);
             imm_value   : out unsigned(15 downto 0);
             flag_zero, flag_neg : in std_logic;
-            ula_wr_en : out std_logic
+            ula_wr_en : out std_logic;
+            ram_wr_en : out std_logic;
+            mem_to_reg : out std_logic
         );
     end component;
     
@@ -74,6 +76,15 @@ architecture a_processador of processador is
         flag_zero    : out std_logic;
         flag_neg     : out std_logic
     ); end component;
+
+    component ram is port(
+            clk      : in std_logic;
+            address : in unsigned(6 downto 0);
+            wr_en    : in std_logic;
+            dado_in  : in unsigned(15 downto 0);
+            dado_out : out unsigned(15 downto 0)
+    );
+    end component;
     
     -- sinais de conexão
     signal pc_to_rom : unsigned(6 downto 0) := "0000000";
@@ -99,6 +110,13 @@ architecture a_processador of processador is
     signal offset_relativo : signed(7 downto 0);
     signal pc_mais_offset  : unsigned(7 downto 0);
     signal is_branch       : std_logic := '0';
+
+    -- sinais RAM
+    signal ram_address : unsigned(6 downto 0);
+    signal ram_data_in, ram_data_out : unsigned(15 downto 0);
+    signal ram_wr_en, mem_to_reg : std_logic;
+    signal reg_write_data : unsigned(15 downto 0); -- dado para escrita no banco de regs
+    signal uc_ram_wr_en : std_logic;
     
 begin
     uc_inst: uc port map(
@@ -119,7 +137,9 @@ begin
         imm_value => uc_imm_value,
         flag_zero => ula_flag_zero,
         flag_neg => ula_flag_neg,
-        ula_wr_en => uc_ula_wr_en
+        ula_wr_en => uc_ula_wr_en,
+        ram_wr_en => uc_ram_wr_en,
+        mem_to_reg => mem_to_reg
     );
     
     rom_inst: rom port map(
@@ -141,21 +161,21 @@ begin
         clk => clk,
         rst => rst,
         wr_en => uc_reg_wr_en,
-        data_wr => ula_out,
         reg_wr => uc_reg_dest,
         reg_read1 => uc_reg_src1,
         data_out1 => reg_data1,
         reg_read2 => uc_reg_src2,
-        data_out2 => reg_data2
+        data_out2 => reg_data2,
+        data_wr => reg_write_data -- alimentado pelo MUX (ULA ou RAM)
     );
 
     ula_inst: ula port map(
         clk => clk,
         rst => rst,
         entr0 => reg_data1,
-        entr1 => ula_operando2,
+        entr1 => ula_operando2, -- operando 2 ou offset de endereço de RAM
         sel => uc_ula_op_sel,
-        wr_en => uc_ula_wr_en,
+        wr_en => uc_ula_wr_en, -- controle de atualização de flags
         saida => ula_out,
         flag_zero => ula_flag_zero,
         flag_neg => ula_flag_neg
@@ -167,6 +187,14 @@ begin
         wr_en => uc_reg_instr_wr_en,
         data_in => rom_to_reg_instr,
         data_out => reg_instr_to_uc
+    );
+
+    ram_inst: ram port map(
+        clk => clk,
+        address => ram_address,
+        wr_en => ram_wr_en,
+        dado_in => ram_data_in,
+        dado_out => ram_data_out
     );
     
     -- Identifica se é salto condicional
@@ -188,4 +216,12 @@ begin
     pc_next <= pc_mais_offset(6 downto 0) when is_branch = '1' else -- Salto relativo
     uc_jump_address when uc_jump_en = '1'  -- Salto absoluto
     else pc_to_rom + 1; -- Próxima instrução
+
+    -- Conexões da RAM
+    ram_address <= ula_out(6 downto 0); -- usa 7 LSB do endereço calculado pela ULA
+    ram_data_in <= reg_data2; -- dado para escrita vem do banco de regs
+    ram_wr_en <= uc_ram_wr_en;
+
+    -- MUX para dado de escrita no banco de regs
+    reg_write_data <= ram_data_out when mem_to_reg = '1' else ula_out;
 end architecture;
