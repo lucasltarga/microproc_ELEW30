@@ -19,7 +19,7 @@ architecture a_processador of processador is
             jump_address : out unsigned(6 downto 0);
             reg_wr_en   : out std_logic;
             reg_instr_wr_en : out std_logic;
-            ula_op_sel  : out unsigned(1 downto 0);
+            ula_op_sel  : out unsigned(2 downto 0);
             operando_sel : out std_logic;
             reg_wr    : out unsigned(2 downto 0);
             reg_src1    : out unsigned(2 downto 0);
@@ -70,7 +70,7 @@ architecture a_processador of processador is
     component ula is port(
         clk, rst     : in std_logic;
         entr0, entr1 : in unsigned(15 downto 0);
-        sel          : in unsigned(1 downto 0);
+        sel          : in unsigned(2 downto 0);
         wr_en        : in std_logic;
         saida        : out unsigned(15 downto 0);
         flag_zero    : out std_logic;
@@ -95,7 +95,7 @@ architecture a_processador of processador is
     signal uc_pc_wr_en, uc_rom_rd_en, uc_jump_en, uc_reg_instr_wr_en : std_logic;
     signal uc_jump_address : unsigned(6 downto 0) := "0000000";
     signal uc_reg_wr_en, uc_operando_sel : std_logic;
-    signal uc_ula_op_sel : unsigned(1 downto 0) := "00";
+    signal uc_ula_op_sel : unsigned(2 downto 0) := "000";
     signal uc_reg_dest, uc_reg_src1, uc_reg_src2 : unsigned(2 downto 0) := "000";
     signal uc_imm_value : unsigned(15 downto 0) := x"0000";
 

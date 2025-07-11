@@ -17,7 +17,7 @@ entity ula is
         clk, rst : in std_logic;
         entr0: in unsigned(15 downto 0);
         entr1: in unsigned(15 downto 0);
-        sel: in unsigned(1 downto 0);
+        sel: in unsigned(2 downto 0);
         wr_en: in std_logic; -- habilita atualização das flags
         flag_zero: out std_logic; -- Resultado = 0
         flag_neg: out std_logic; -- Negativo (MSB = 1)
@@ -29,18 +29,38 @@ end entity;
 architecture a_ula of ula is
     signal resultado: unsigned(15 downto 0);
     signal reg_zero, reg_neg: std_logic := '0';
+    signal resultado_ctz: unsigned (15 downto 0);
 
 begin
     -- Operações:
-    -- 00 -> Soma
-    -- 01 -> Subtração (sem borrow)
-    -- 10 -> OU
-    -- 11 -> E
+    -- 000 -> Soma
+    -- 001 -> Subtração (sem borrow)
+    -- 010 -> OU
+    -- 011 -> E
+    -- 100 -> CTZ
 
-    resultado <= entr0+entr1 when sel="00"
-    else    entr0-entr1 when sel="01"
-    else    entr0 or entr1 when sel="10"
-    else    entr0 and entr1 when sel="11" 
+    process(entr0)
+        variable count: integer range 0 to 16;
+        variable found_one: boolean;
+    begin
+        count := 0;
+        found_one := false;
+        for i in 0 to 15 loop
+            if entr0(i) = '1' then
+                found_one := true;
+            elsif not found_one then
+                count := count + 1;
+            end if;
+        end loop;
+        
+        resultado_ctz <= to_unsigned(count, 16);
+    end process;
+
+    resultado <= resultado_ctz when sel = "100"
+    else    entr0+entr1 when sel="000"
+    else    entr0-entr1 when sel="001"
+    else    entr0 or entr1 when sel="010"
+    else    entr0 and entr1 when sel="011"
     else    "0000000000000000";
 
     saida <= resultado;

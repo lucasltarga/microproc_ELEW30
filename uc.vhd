@@ -8,7 +8,7 @@ entity uc is
         instruction  : in unsigned(18 downto 0);
         pc_wr_en, rom_rd_en, jump_en, reg_instr_wr_en : out std_logic; -- sinais de controle
         jump_address : out unsigned(6 downto 0); -- endereço absoluto de salto
-        ula_op_sel   : out unsigned(1 downto 0);
+        ula_op_sel   : out unsigned(2 downto 0);
         operando_sel : out std_logic;
         reg_wr       : out unsigned(2 downto 0);
         reg_wr_en    : out std_logic;
@@ -53,10 +53,10 @@ architecture a_uc of uc is
 
     -- Ativo para instruções tipo R e tipo I
     reg_dest_s <= instruction(14 downto 12) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100" or 
-                                                  opcode = "0101" or opcode = "0110" or opcode = "0111" or opcode = "1010") else "000";
+                                                  opcode = "0101" or opcode = "0110" or opcode = "0111" or opcode = "1010" or opcode = "1100") else "000";
     -- Mesmo de reg_dest_s
     reg_src1_s  <= instruction(11 downto 9) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100" or 
-                                                  opcode = "0101" or opcode = "0110" or opcode = "0111" or opcode="1010" or opcode = "1011") else "000";
+                                                  opcode = "0101" or opcode = "0110" or opcode = "0111" or opcode="1010" or opcode = "1011" or opcode = "1100") else "000";
     -- Ativo para instruções tipo R
     reg_src2_s  <= instruction(14 downto 12) when (opcode = "1011") else 
                    instruction(8 downto 6) when (opcode = "0001" or opcode = "0010" or opcode = "0011" or opcode = "0100")
@@ -108,7 +108,8 @@ architecture a_uc of uc is
         opcode = "0011" or -- OR
         opcode = "0100" or -- AND
         opcode = "0101" or -- ADDI
-        opcode = "0110"    -- SUBI
+        opcode = "0110" or -- SUBI
+        opcode = "1100" -- CTZ
         )) or (estado = "11" and opcode = "1010") -- LW
         else '0';
 
@@ -117,23 +118,24 @@ architecture a_uc of uc is
         opcode = "0001" or opcode = "0010" or  -- ADD, SUB
         opcode = "0011" or opcode = "0100" or  -- OR, AND
         opcode = "0101" or opcode = "0110" or  -- ADDI, SUBI
-        opcode = "0111"                        -- CMPI
+        opcode = "0111" or opcode = "1100"     -- CMPI, CTZ
     )) else '0';
     
     -- Seleção de endereço de salto
     jump_address <= jump_addr when opcode = "1111" else offset_salto;
 
     -- Controle do caminho de dados
-    ula_op_sel <= "00" when opcode = "0001" else -- ADD
-                  "01" when opcode = "0010" else -- SUB
-                  "10" when opcode = "0011" else -- OR
-                  "11" when opcode = "0100" else -- AND
-                  "00" when opcode = "0101" else -- ADDI
-                  "01" when opcode = "0110" else -- SUBI
-                  "01" when opcode = "0111" else -- CMPI
-                  "00" when opcode = "1010" else -- LW
-                  "00" when opcode = "1011" else -- SW
-                  "00";                          -- Padrão
+    ula_op_sel <= "000" when opcode = "0001" else -- ADD
+                  "001" when opcode = "0010" else -- SUB
+                  "010" when opcode = "0011" else -- OR
+                  "011" when opcode = "0100" else -- AND
+                  "000" when opcode = "0101" else -- ADDI
+                  "001" when opcode = "0110" else -- SUBI
+                  "001" when opcode = "0111" else -- CMPI
+                  "000" when opcode = "1010" else -- LW
+                  "000" when opcode = "1011" else -- SW
+                  "100" when opcode = "1100" else -- CTZ
+                  "000";                          -- Padrão
     
     -- Seleção do segundo operando (0 para imediato e 1 para registrador)
     operando_sel <= '0' when opcode = "0101" else -- ADDI
