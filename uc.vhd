@@ -119,11 +119,6 @@ architecture a_uc of uc is
         opcode = "0101" or opcode = "0110" or  -- ADDI, SUBI
         opcode = "0111"                        -- CMPI
     )) else '0';
-
-    -- Controle de saltos (EXECUTE)
-    jump_en <=  '1' when (estado = "10" and opcode = "1111") else   -- Salto incondicional (opcode 1111)
-                '1' when (estado = "10" and opcode="1000" and flag_zero='0') else   -- Salto condicional BNE (opcode 1000)
-                '1' when (estado = "10" and opcode="1001" and flag_neg='0') else '0'; -- Salto condicional BPL (1001)
     
     -- Seleção de endereço de salto
     jump_address <= jump_addr when opcode = "1111" else offset_salto;
@@ -152,6 +147,11 @@ architecture a_uc of uc is
     -- Controle para ram_wr_en_s
     ram_wr_en_s <= '1' when (estado = "11" and opcode = "1011") else '0'; -- escrita em SW
     mem_to_reg_s <= '1' when (opcode = "1010") else '0'; -- LW
+
+    -- Controle de saltos
+    jump_en <=  '1' when (estado = "11" and opcode = "1111") else   -- Salto incondicional (opcode 1111)
+                '1' when (estado = "11" and opcode="1000" and flag_zero='0') else   -- Salto condicional BNE (opcode 1000)
+                '1' when (estado = "11" and opcode="1001" and flag_neg='0') else '0'; -- Salto condicional BPL (1001)
 
     -- Escrita do PC (somente no final do ciclo)
     pc_wr_en_s <= '1' when estado = "11" else '0'; -- atualiza PC
